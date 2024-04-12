@@ -1,8 +1,17 @@
+// Creator: Justs Abrams
+
 #include "ch347_lib.h"
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
+
+#define _GNU_SOURCE
+
+// Define intervals for sleep so its easier on the eyes
+#define HALF_SECOND 500000
+#define ONE_AND_HALF_SECONDS 1500000
 
 struct ch34x {
 	int fd;
@@ -11,38 +20,116 @@ struct ch34x {
 	uint32_t dev_id;
 };
 
-static struct ch34x ch347device;
+static struct ch34x device;
 
-int FlashGPIO() {
-    bool ret;
-	int i, j;
-	int gpiocount = 8;
-	uint8_t iEnable = 0xff;
-	uint8_t iSetDirOut = 0xff;
-	uint8_t iSetDataOut = 0x00;
+// Function for outputing current GPIO status
+static void GPIO_read() {
 
-    CH347GPIO_Set(ch347device.fd, iEnable, iSetDirOut, iSetDataOut);
+  uint8_t iDir;
+  uint8_t iData;
 
-    // Set GPIO 1 high
-    CH347GPIO_Set(ch347device.fd, iEnable, iSetDirOut, iSetDataOut);
-    Sleep(1000); // 1 second delay
-
-    // Set GPIO 1 low
-    CH347GPIO_Set(ch347device.fd, iEnable, iSetDirOut, iSetDataOut); // GPIO 1 low
-    Sleep(1000); // 1 second delay
-    
-    return 0;
+  CH347GPIO_Get(device.fd, &iDir, &iData);
+  //Print iDir pointer
+  printf("GPIO direction bit [GET]: %p, ", iDir);
+  //Print iData as hex
+  printf("iData value is: %X\n", iData);
 }
 
+//Function for blinking GPIO #1 ready to update
+static void GPIO_blink_ready_to_update() {
+	
+	int i;
+	uint8_t iDir;
+	uint8_t iData;
+	uint8_t iEnable;
+	uint8_t iSetDirOut;
+	uint8_t iSetDataOut;
+
+	//Get GPIO status
+  	CH347GPIO_Get(device.fd, &iDir, &iData);
+  	iSetDataOut = iData;
+
+
+	for (i = 0; i < 10; i++) {
+		iSetDataOut = iSetDataOut ^ 0x02;
+		CH347GPIO_Set(device.fd, 0x02, 0x02, iSetDataOut);
+
+		usleep(HALF_SECOND);
+	}
+}
+
+//Function for blinking GPIO #1 update finished
+static void GPIO_blink_finished() {
+	
+	int i;
+	uint8_t iDir;
+	uint8_t iData;
+	uint8_t iEnable;
+	uint8_t iSetDirOut;
+	uint8_t iSetDataOut;
+
+	//Get GPIO status
+  	CH347GPIO_Get(device.fd, &iDir, &iData);
+  	iSetDataOut = iData;
+
+
+	for (i = 0; i < 10; i++) {
+		iSetDataOut = iSetDataOut ^ 0x02;
+		CH347GPIO_Set(device.fd, 0x02, 0x02, iSetDataOut);
+
+		usleep(ONE_AND_HALF_SECONDS);
+	}
+}
+
+
+
 int main (int argc, char *argv[]) {
-    // open device
-	ch347device.fd = CH347OpenDevice(argv[1]);
-	if (ch347device.fd < 0) {
-		printf("CH347OpenDevice() false.\n");
+
+	bool update_ready;
+	int input;
+    int toggleState = 0;
+
+	GPIO_read();
+    // open GPIO device
+	printf("GPIO Device is opening...");
+	device.fd = CH347OpenDevice(argv[1]);
+	if (device.fd < 0) {
+		printf("GPIO failed to open false.\n");
 		return -1;
 	};
+	printf("GPIO device %s opened successfully, fd: %d\n", argv[1], device.fd);
 
-    while(1){
-        FlashGPIO();
-    };
+	// Mock the different modes of led blinking
+	system("clear");
+    printf("Press 0 to toggle \"Ready to update \" or press 1 to toggle \"Update finished\" blinking modes\n");
+
+    while (1) {
+        printf("Enter your choice: ");
+        scanf("%d", &input); // Read an integer input from the user
+
+        if (input == 1) {
+			system("clear");
+            toggleState = !toggleState; // Toggle the state
+            printf("State is now: %s\n", toggleState ? "Update finished" : "Ready to update\n");
+            GPIO_blink_ready_to_update();
+            break;
+        } else if (input == 0) {
+			system("clear");
+            printf("State is now: %s\n", toggleState ? "Update finished" : "Ready to update\n");
+            GPIO_blink_finished();
+            break;
+        } else {
+			system("clear");
+            printf("Invalid input. Please enter '1' to toggle or '0' to quit.\n");
+        }
+    }
+	system("clear");
+    printf("Exiting program, wait for device to close.\n");
+
+		/* close the device */
+	if (CH347CloseDevice(device.fd)) {
+		system("clear");
+		printf("Close device succeed.\n");
+	}
+    return 0;
 };

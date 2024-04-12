@@ -1,6 +1,7 @@
 #ifndef _CH341_LIB_H
 #define _CH341_LIB_H
 
+
 typedef enum _EEPROM_TYPE {
 	ID_24C01,
 	ID_24C02,
